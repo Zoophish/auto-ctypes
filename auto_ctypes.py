@@ -1,5 +1,5 @@
 # Copyright Sam Warren 2021
-# autoctypes - automatically creates bindings to C binaries & headers
+# autoctypes - automatically creates bindings to C binaries & headers.
 
 import ctypes
 import os
