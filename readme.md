@@ -53,7 +53,7 @@ my_type_instance.int_member = 9
 # alternatively use the clib instance directly to use the library without creating a python module
 value1 = clib.ex('my_function', 100)
 value2 = clib.enum('ShapeEnum', 'SQUARE')
-my_type_instance = clib.struct_dict['MyType']
+my_type_instance = clib.struct_dict['MyType']()
 ```
 
 Sam Warren 2021
