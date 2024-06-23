@@ -1,13 +1,14 @@
 # auto-ctypes
 
-A Python script that automatically generates bindings for C header files and binaries using ctypes. It's a very simple implementation that I made to automatically create Python bindings for my own projects and avoid writing repetitive code.
+A small Python script that automatically generates bindings for C header files and binaries using ctypes. It's a very simple implementation that uses regular expressions. I made it as a lightweight alternative to automatically create Python bindings for my own projects and avoid writing repetitive code.
 
 **Features**    
 - Generates `ctypes.Structure` derived classes for each type in the header(s) and automatically fills in `_fields_`. Opaque types have no `_field_` elements.    
 - Wraps header enums with fake enum class. Enum values are `ctypes.c_int` by default, but can be overriden using C++ colon syntax (doesn't support any other C++ features).    
 - Creates function wrappers for exported functions in header(s). It deduces return and argument types automatically and generates type hints.    
+- Does basic pre-processing of includes, macros and conditional compilation     
+- Small: ~500 lines of Python    
 - It doesn't wrap global variables as I don't use these.    
-- Less than 500 lines of Python - can use it as a module or just copy and paste the file directly.    
 
 **Loading a Library**
 ```python
@@ -25,6 +26,9 @@ export_tag = 'MY_LIB_EXPORT'
 
 # load the binary and definitions into a clib instance
 clib = actypes.CLib()
+# add a macro to the pre-processor
+clib.define('_WIN32')
+# load everything with one function
 clib.load_lib(bin_path, header_path, headers, export_tag)
 
 # generate the python module called my_lib
@@ -56,4 +60,4 @@ value2 = clib.enum('ShapeEnum', 'SQUARE')
 my_type_instance = clib.struct_dict['MyType']()
 ```
 
-Sam Warren 2021
+Sam Warren 2024

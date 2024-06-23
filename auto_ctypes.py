@@ -17,6 +17,8 @@ def print_error(msg):
 
 
 def wrap_function(lib, funcname, restype, argtypes, argnames):
+    if lib == None:
+        print_error("Cannot load function because no C binary is loaded.")
     func = lib.__getattr__(funcname)
     func.restype = restype
     func.argtypes = argtypes
@@ -32,10 +34,11 @@ def split(s, seps):
 
 
 def get_all_enclosed(s, beg, end, inclusive = False):
+    pattern = re.escape(beg) + "(.*?)" + re.escape(end)
     if inclusive:
-        return [beg + it + end for it in re.findall(beg + "(.*?)" + end, s, re.DOTALL)]
+        return [beg + match + end for match in re.findall(pattern, s, re.DOTALL)]
     else:
-        return re.findall(beg + "(.*?)" + end, s, re.DOTALL)
+        return re.findall(pattern, s, re.DOTALL)
 
 
 # make pointers written in same way for easier parsing
@@ -104,6 +107,16 @@ def module_exists(path, name):
     b = b and os.path.isfile(os.path.join(path, f"{name}.py"))
     return b
 
+
+def strip_comments(s):
+    def replacer(match):
+        s = match.group(0)
+        if s.startswith('/'):
+            return " "  # Replace with a space for potential tokens
+        else:
+            return ""   # Remove completely 
+    return re.sub(r'//.*?$|/\*.*?\*/', replacer, s, flags=re.DOTALL)
+
 # - - - - - - - - - - - - - - -
 
 
@@ -112,9 +125,11 @@ class CLib():
         self.clib = None
         self.exp_tag = ""
         self.bin_path = ""
+        self.include_path = ""
         self.struct_dict = {} # does not store pointer/array types for respective type
         self.enum_dict = {}
         self.func_dict = {}
+        self.pre_definitions = {}
         self.unresolved_types = [] # should be empty after headers loaded
 
 
@@ -190,7 +205,7 @@ class CLib():
 
     def load_enum(self, e):
         enum_name = re.search("(?<=enum ).*?(?=\s)", e).group(0)
-        content = re.search("(?<=\{).*?(?=\\\})", e, re.DOTALL).group(0)
+        content = re.search("(?<=\\{).*?(?=\\})", e, re.DOTALL).group(0)
 
         elements = [el.strip() for el in content.split(',')] # separate items
         enum_values = dict()
@@ -215,8 +230,11 @@ class CLib():
 
     def load_func(self, f):
         try:
-            parts = split(f, string.whitespace + '(')
-            # 0[export tag] 1[ret type] 2[name] 3[args]
+            exp_str = self.pre_definitions[self.exp_tag]
+            f = f.replace(exp_str, '')
+            raw_parts = split(f, string.whitespace + '(')
+            parts = [exp_str] + list(filter(None, raw_parts))
+            # 0[export tag] 1[ret type] 2[name] 3[args/junk]
 
             (parts[1], parts[2]) = move_pointer_sig(parts[1], parts[2]) # move pointer signature into part 1
             
@@ -242,7 +260,6 @@ class CLib():
     def load_struct(self, s):
         if '{' not in s and '}' not in s: # opaque struct wrapper
             struct_name = re.search("(?<=struct ).*(?=;)", s).group(0)
-            #self.struct_dict[struct_name] = type(struct_name, (ctypes.Structure, ), dict())
             self.struct_dict[struct_name] = types.new_class(struct_name, (ctypes.Structure, ), dict())
             self.resolve_type(struct_name) # has a declaration
 
@@ -250,7 +267,6 @@ class CLib():
             struct_name = re.search("(?<=struct ).*?(?= \{)", s).group(0)
 
             if struct_name not in self.struct_dict:
-                #self.struct_dict[struct_name] = type(struct_name, (ctypes.Structure, ), dict()) # placeholder
                 self.struct_dict[struct_name] = types.new_class(struct_name, (ctypes.Structure, ), dict()) # placeholder
             
             struct = self.struct_dict[struct_name]
@@ -268,43 +284,103 @@ class CLib():
             self.resolve_type(struct_name) # has a definition
 
 
-    def find_structs(self, s):
+    def pre_process(self, s):
+        lines = s.splitlines()
+
+        def process_block(index, cond=True):
+            start = index
+            nonlocal lines
+            while index < len(lines):
+                line = strip_comments(lines[index])
+                if cond: # don't bother processing lines that are inactive
+                    for k in self.pre_definitions:
+                        if self.pre_definitions[k]:
+                            line = lines[index] = re.sub(fr'\b{k}\b', self.pre_definitions[k], line)
+                comp = line.split(None, 3)
+                if len(comp) == 0:
+                    index += 1
+                    continue
+                # every ifdef block is iterated over, regardless of whether the block condition is true
+                # this is to handle every #endif or #else
+                elif "#ifdef" in comp[0] or "#ifndef" in comp[0]:
+                    blk_start = index
+                    condition = ("#ifdef" in comp[0] and comp[1] in self.pre_definitions) or \
+                                ("#ifndef" in comp[0] and comp[1] not in self.pre_definitions)
+                    index += 1
+                    # if the condition is true, process that block
+                    if_block, index = process_block(index, condition)
+                    else_block = []
+                    if index < len(lines) and "#else" in lines[index]:
+                        index += 1
+                        else_block, index = process_block(index, not condition)
+                    if condition:
+                        lines[blk_start:index+1] = if_block
+                        index = blk_start + len(if_block)
+                    else:
+                        lines[blk_start:index+1] = else_block
+                        index = blk_start + len(else_block)
+                elif "#endif" in comp[0] or '#else' in comp[0]:
+                    return lines[start:index], index
+                elif cond: # only do this pre-processing logic if the block exists
+                    if '#include' in comp[0]:
+                        path = comp[1].strip()[1:-1]
+                        with open(os.path.join(self.include_path, path), 'r') as file:
+                            f_lines = self.pre_process(file.read())
+                            lines = lines[:index] + f_lines + lines[index + 1:]
+                            index += len(f_lines)
+                    elif "#define" in comp[0]:
+                        self.pre_definitions[comp[1]] = ' '.join(comp[2:]) if len(comp) > 2 else ''
+                        lines = lines[:index] + lines[index + 1:]
+                    else: index += 1
+                else:
+                    index += 1
+            return lines, index
+        result, _ = process_block(0)
+        return result
+
+
+    @staticmethod
+    def find_structs(s):
         defined = re.findall("struct [^;.]*?\{.*?\};", s, re.DOTALL)
-        opaques = re.findall("struct .*?[;]", s)
+        opaques = re.findall("struct\\s+\\S+;", s)
         return defined + opaques
 
 
-    def find_enums(self, s):
-        out = get_all_enclosed(s, "enum ", "\};", True)
+    @staticmethod
+    def find_enums(s):
+        out = get_all_enclosed(s, "enum ", "};", True)
         return out
 
 
-    def find_funcs(self, s):
-        out = get_all_enclosed(s, self.exp_tag + " ", ';', True)
+    @staticmethod
+    def find_funcs(s, exp_tag):
+        out = get_all_enclosed(s, exp_tag, ';', True)
         return out
 
+    def define(self, macro, value = ''):
+        self.pre_definitions[macro] = value
 
     def load_header(self, path):
         file = open(path, 'r')
-        f = file.read()
-        # find parts of text that define/declare a struct, enum or function
-        struct_definitions = self.find_structs(f)
-        enum_definitions = self.find_enums(f)
-        func_declarations = self.find_funcs(f)
+        fstr = file.read()
+        fstr = '\n'.join(self.pre_process(fstr))
+        struct_definitions = self.find_structs(fstr)
+        enum_definitions = self.find_enums(fstr)
+        func_declarations = self.find_funcs(fstr, self.pre_definitions[self.exp_tag])
         file.close()
-        # parse each part
         [self.load_enum(e) for e in enum_definitions]
         [self.load_struct(s) for s in struct_definitions]
         [self.load_func(f) for f in func_declarations]
         
     
-    def load_lib(self, bin_path, header_path, headers, export_tag):
+    def load_lib(self, bin_path, include_path, headers, export_tag):
         self.clib = ctypes.CDLL(bin_path)
         self.exp_tag = export_tag
         self.bin_path = bin_path
+        self.include_path = include_path
 
         for h in headers:
-            path = os.path.join(header_path, h)
+            path = os.path.join(include_path, h)
             self.load_header(path)
         return True
 
@@ -319,20 +395,6 @@ class CLib():
     
     def enum(self, enum_name, item_name):
         return self.enum_dict[enum_name][item_name]
-
-
-    def reset(self):
-        self.clib = None
-        self.exp_tag = ""
-        self.struct_dict = {}
-        self.enum_dict = {}
-        self.func_dict = {}
-        self.unresolved_types = []
-
-
-    def __init__(self):
-        self.reset()
-
 
 
     # -------------- module generator ---------------
