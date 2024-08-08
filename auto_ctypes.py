@@ -525,3 +525,18 @@ class CLib():
         file = open(os.path.join(path, "__init__.py"), 'w')
         file.close()
         print("[autoctypes] Module generated")
+
+
+if __name__ == '__main__':
+    import sys
+    if len(sys.argv) < 2:
+        print("Usage: -gen <header_path> <headers> <bin_path> <export_macro> <output_path> <gen_module_name>")
+        sys.exit(1)
+    if sys.argv[1] == '-gen':
+        header_path, headers_arg, bin_path, export_macro, output_path, gen_module_name = sys.argv[2:]
+        headers = [h.strip() for h in headers_arg.strip('"').split(',') if h.strip()]
+        clib = CLib()
+        clib.load_lib(bin_path, header_path, headers, export_macro)
+        clib.gen_module(output_path, gen_module_name)
+    else:
+        print(f"{sys.argv[0]} unrecognised argument.")
