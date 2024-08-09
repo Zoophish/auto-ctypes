@@ -216,9 +216,10 @@ class CLib():
                 parts = elements[i].split('=')
                 name = parts[0].strip()
                 value = int(parts[1].strip())
-            else:
+            elif elements[i].strip():
                 name = elements[i].strip()
                 value = i
+            else: continue
             
             enum_values[name] = value
 
@@ -249,7 +250,7 @@ class CLib():
                 arg_types = self.get_arg_types(args)
             self.func_dict[name] = wrap_function(self.clib, name, ret_type, arg_types, arg_names)
         except:
-           print_error("Could not load function: " + f)
+           print_error("Exception occurred loading function: " + f)
 
 
     def resolve_type(self, name):
@@ -258,12 +259,15 @@ class CLib():
 
 
     def load_struct(self, s):
+        opaque = True
         if '{' not in s and '}' not in s: # opaque struct wrapper
+            opaque = True
             struct_name = re.search("(?<=struct ).*(?=;)", s).group(0)
             self.struct_dict[struct_name] = types.new_class(struct_name, (ctypes.Structure, ), dict())
             self.resolve_type(struct_name) # has a declaration
 
         else:   # define structure
+            opaque = False
             struct_name = re.search("(?<=struct ).*?(?= \{)", s).group(0)
 
             if struct_name not in self.struct_dict:
@@ -272,13 +276,14 @@ class CLib():
             struct = self.struct_dict[struct_name]
             
             fields = [] # must set _fields_ attribute with values or class wont behave correctly
-            content = re.search("\{(.*?)\}", s, re.DOTALL).group(0)[1:-1]
-            members = [member.strip() for member in content.split(';')][:-1]
-            for member in members:
-                mem_parts = split(member, string.whitespace)
-                mem_type_name = mem_parts[0].strip()
-                mem_name = mem_parts[1].strip()
-                fields.append( (mem_name, self.get_ctype(mem_type_name)) )
+            if not opaque:
+                content = re.search("\{(.*?)\}", s, re.DOTALL).group(0)[1:-1]
+                members = [member.strip() for member in content.split(';')][:-1]
+                for member in members:
+                    mem_parts = split(member, string.whitespace)
+                    mem_type_name = mem_parts[0].strip()
+                    mem_name = mem_parts[1].strip()
+                    fields.append( (mem_name, self.get_ctype(mem_type_name)) )
 
             setattr(struct, "_fields_", fields) # add the required _fields_ attribute
             self.resolve_type(struct_name) # has a definition
@@ -292,6 +297,7 @@ class CLib():
             nonlocal lines
             while index < len(lines):
                 line = strip_comments(lines[index])
+                line = line = re.sub(r'^\s*#\s+', '#', line)  # handle cmake's odd formatting
                 if cond: # don't bother processing lines that are inactive
                     for k in self.pre_definitions:
                         if self.pre_definitions[k]:
@@ -536,6 +542,7 @@ if __name__ == '__main__':
         header_path, headers_arg, bin_path, export_macro, output_path, gen_module_name = sys.argv[2:]
         headers = [h.strip() for h in headers_arg.strip('"').split(',') if h.strip()]
         clib = CLib()
+        clib.exp_tag = export_macro
         clib.load_lib(bin_path, header_path, headers, export_macro)
         clib.gen_module(output_path, gen_module_name)
     else:
