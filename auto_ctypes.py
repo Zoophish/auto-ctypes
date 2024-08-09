@@ -543,7 +543,7 @@ if __name__ == '__main__':
         headers = [h.strip() for h in headers_arg.strip('"').split(',') if h.strip()]
         clib = CLib()
         clib.exp_tag = export_macro
-        clib.load_lib(os.path(bin_path), os.path(header_path), headers, export_macro)
-        clib.gen_module(os.path(output_path), gen_module_name)
+        clib.load_lib(os.path.normpath(bin_path), os.path.normpath(header_path), headers, export_macro)
+        clib.gen_module(os.path.normpath(output_path), gen_module_name)
     else:
         print(f"{sys.argv[0]} unrecognised argument.")
