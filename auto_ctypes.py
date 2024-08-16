@@ -13,7 +13,7 @@ from inspect import currentframe, getframeinfo
 
 def print_error(msg):
     frameinfo = getframeinfo(currentframe().f_back)
-    print("AutoCtypes Error, line " + str(frameinfo.lineno) + ": " + msg)
+    print("[autoctypes] Error, line " + str(frameinfo.lineno) + ": " + msg)
 
 
 def wrap_function(lib, funcname, restype, argtypes, argnames):
@@ -24,6 +24,10 @@ def wrap_function(lib, funcname, restype, argtypes, argnames):
     func.argtypes = argtypes
     func.argnames = argnames
     return func
+
+
+def is_primitive_ctype(t):
+    return issubclass(t, ctypes._SimpleCData) and hasattr(t, '_type_')
 
 
 def split(s, seps):
@@ -71,14 +75,15 @@ def reduce_func_args(arg_str):
             arg_names[i] = re.search("\(\*(.*?)\)", args[i]).group(1)
         else: # regular type
             arg_t = args[i].split(' ')
-            arg_t = move_pointer_sig(arg_t[0], arg_t[1])
-            arg_t = move_array_sig(arg_t[0], arg_t[1])
+            if len(arg_t) > 1:
+                arg_t = move_pointer_sig(arg_t[0], arg_t[1])
+                arg_t = move_array_sig(arg_t[0], arg_t[1])
+                arg_names[i] = arg_t[1]
             args[i] = arg_t[0]
-            arg_names[i] = arg_t[1]
     return (args, arg_names)
 
 
-integral_ctypes_regex = [
+primitive_ctypes_regex = [
     ("int(?!.)", ctypes.c_int),
     ("unsigned(?!.)", ctypes.c_uint),
     ("char(?!.)", ctypes.c_char),
@@ -88,11 +93,11 @@ integral_ctypes_regex = [
     ("void(?!.)", None)]
 
 
-def str_to_integral_ctype(s):
+def str_to_primitive_ctype(s):
     post = "[\*\[\]]?"
-    for i in range(0, len(integral_ctypes_regex)):
-        if re.search(integral_ctypes_regex[i][0] + post, s) is not None:
-            return (True, integral_ctypes_regex[i][1])
+    for i in range(0, len(primitive_ctypes_regex)):
+        if re.search(primitive_ctypes_regex[i][0] + post, s) is not None:
+            return (True, primitive_ctypes_regex[i][1])
     return (False, None)
 
 
@@ -146,10 +151,10 @@ class CLib():
         s = s.strip()
         
         t = None
-        it = str_to_integral_ctype(s) # check for integral type
-        is_integral = it[0]
+        it = str_to_primitive_ctype(s) # check for primitive type
+        is_primitive = it[0]
 
-        if not is_integral:
+        if not is_primitive:
             if s in self.enum_dict: # type is actually enum
                 t = ctypes.c_int
             elif s not in self.struct_dict: # pre-declare struct
@@ -165,7 +170,7 @@ class CLib():
 
         if is_arr: t = t * arr_num # make array type
         if is_ptr:
-            if is_integral:
+            if is_primitive:
                 if s == "void": t = ctypes.c_void_p
                 elif s == "char": t = ctypes.c_char_p
                 elif s == "wchar": t = ctypes.c_wchar_p
@@ -229,11 +234,28 @@ class CLib():
         self.enum_dict[enum_name] = enum_values
 
 
+    def load_typedef(self, s):
+        parts = split(s, string.whitespace)
+        if parts[1].strip() == 'struct':
+            print("[autoctypes] Global variables not supported")
+        elif '(' in s and ')' in s: # probably a func ptr
+            f = self.get_fnc_ptr(' '.join(parts[1:]))
+            name = re.search(r'\((.*?)\)', s).group(1).replace('*', '')
+            self.struct_dict[name] = f
+            self.resolve_type(name)
+        elif len(parts) == 3: # alias
+            t = self.get_ctype(parts[1])
+            alias = parts[2].replace(';', '').strip()
+            self.struct_dict[alias] = t
+            self.resolve_type(alias)
+
+
     def load_func(self, f):
         try:
             exp_str = self.pre_definitions[self.exp_tag]
             f = f.replace(exp_str, '')
-            raw_parts = split(f, string.whitespace + '(')
+            raw_parts = split(f, string.whitespace + '()')
+            func_ptr = '*' in raw_parts[3]
             parts = [exp_str] + list(filter(None, raw_parts))
             # 0[export tag] 1[ret type] 2[name] 3[args/junk]
 
@@ -242,13 +264,17 @@ class CLib():
             ret_type = self.get_ctype(parts[1])
             name = parts[2].strip()
 
-            arg_str = re.search("\(.*\)", f).group(0)[1:-1] # arguments
+            arg_pos = 2 if func_ptr else 1
+            arg_str = (pmatch := re.search(r'\((.*?)\).*?\((.*?)\)', f)) and pmatch.group(arg_pos) or ''
             arg_types = None
             arg_names = None
             if arg_str:
                 args, arg_names = reduce_func_args(arg_str)    
                 arg_types = self.get_arg_types(args)
-            self.func_dict[name] = wrap_function(self.clib, name, ret_type, arg_types, arg_names)
+            if func_ptr:
+                print("[autoctypes] Global variables not supported")
+            else:
+                self.func_dict[name] = wrap_function(self.clib, name, ret_type, arg_types, arg_names)
         except:
            print_error("Exception occurred loading function: " + f)
 
@@ -354,14 +380,18 @@ class CLib():
 
     @staticmethod
     def find_enums(s):
-        out = get_all_enclosed(s, "enum ", "};", True)
-        return out
+        return get_all_enclosed(s, "enum ", "};", True)
 
 
     @staticmethod
     def find_funcs(s, exp_tag):
-        out = get_all_enclosed(s, exp_tag, ';', True)
-        return out
+        return get_all_enclosed(s, exp_tag, ';', True)
+                
+
+    @staticmethod
+    def find_typedefs(s):
+        return get_all_enclosed(s, 'typedef', ';', True)
+
 
     def define(self, macro, value = ''):
         self.pre_definitions[macro] = value
@@ -370,12 +400,15 @@ class CLib():
         file = open(path, 'r')
         fstr = file.read()
         fstr = '\n'.join(self.pre_process(fstr))
+        fstr = re.sub(r'\b(const|volatile)\s+', '', fstr) # disregard qualifiers
         struct_definitions = self.find_structs(fstr)
+        typedef_declarations = self.find_typedefs(fstr)
         enum_definitions = self.find_enums(fstr)
         func_declarations = self.find_funcs(fstr, self.pre_definitions[self.exp_tag])
         file.close()
         [self.load_enum(e) for e in enum_definitions]
         [self.load_struct(s) for s in struct_definitions]
+        [self.load_typedef(s) for s in typedef_declarations]
         [self.load_func(f) for f in func_declarations]
         
     
@@ -412,11 +445,11 @@ class CLib():
         is_arr = hasattr(t, '_length_')
         is_func_ptr = hasattr(t, '_argtypes_')
         if is_func_ptr:
-            restype = t._restype_.__name__ if t._restype_ else "None"
+            restype = CLib.get_type_str(t._restype_)
             if len(t._argtypes_) != 0:
                 argstr = ""
                 for i, argt in enumerate(t._argtypes_) or []:
-                    argstr += argt.__name__
+                    argstr +=  CLib.get_type_str(argt)
                     if i != (len(t._argtypes_) - 1): argstr += ", "
                 return f"ctypes.CFUNCTYPE({restype}, {argstr})"
             return f"ctypes.CFUNCTYPE({restype})"
@@ -437,7 +470,7 @@ class CLib():
 
     @staticmethod
     def get_struct_str(c):
-        s = "class " + c.__name__ + "(ctypes.Structure):" + "\n\t"
+        s = "class " + c.__name__.strip() + "(ctypes.Structure):" + "\n\t"
         if hasattr(c, '_fields_'): field_size = len(c._fields_)
         else: field_size = 0
         if field_size > 0:
@@ -451,13 +484,16 @@ class CLib():
         else:
             s += "pass"
         return s
-            
+
 
     def gen_structs(self):
         s = ""
         for c in self.struct_dict:
-            struct = self.struct_dict[c]
-            s += self.get_struct_str(struct) + "\n\n"
+            t = self.struct_dict[c]
+            if is_primitive_ctype(t) or hasattr(t, 'argtypes'): # primitive alias or func prototype
+                s += f"{c} = {CLib.get_type_str(t)}\n\n"
+            else:
+                s += self.get_struct_str(t) + "\n\n"
         return s
 
 
