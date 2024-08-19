@@ -264,8 +264,7 @@ class CLib():
             ret_type = self.get_ctype(parts[1])
             name = parts[2].strip()
 
-            arg_pos = 2 if func_ptr else 1
-            arg_str = (pmatch := re.search(r'\((.*?)\).*?\((.*?)\)', f)) and pmatch.group(arg_pos) or ''
+            arg_str = re.findall(r'\((.*?)\)', f)[0]
             arg_types = None
             arg_names = None
             if arg_str:
