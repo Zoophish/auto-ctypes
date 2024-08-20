@@ -571,7 +571,7 @@ if __name__ == '__main__':
         print("Usage: -gen <header_path> <headers> <bin_path> <export_macro> <output_path> <gen_module_name> --[nopkg/]")
         sys.exit(1)
     if sys.argv[1] == '-gen':
-        header_path, headers_arg, bin_path, export_macro, output_path, gen_module_name = sys.argv[2:]
+        header_path, headers_arg, bin_path, export_macro, output_path, gen_module_name = sys.argv[2:7]
         headers = [h.strip() for h in headers_arg.strip('"').split(',') if h.strip()]
         clib = CLib()
         clib.exp_tag = export_macro
