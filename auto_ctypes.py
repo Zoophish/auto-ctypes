@@ -255,7 +255,6 @@ class CLib():
             exp_str = self.pre_definitions[self.exp_tag]
             f = f.replace(exp_str, '')
             raw_parts = split(f, string.whitespace + '()')
-            func_ptr = '*' in raw_parts[3]
             parts = [exp_str] + list(filter(None, raw_parts))
             # 0[export tag] 1[ret type] 2[name] 3[args/junk]
 
@@ -270,10 +269,7 @@ class CLib():
             if arg_str:
                 args, arg_names = reduce_func_args(arg_str)    
                 arg_types = self.get_arg_types(args)
-            if func_ptr:
-                print("[autoctypes] Global variables not supported")
-            else:
-                self.func_dict[name] = wrap_function(self.clib, name, ret_type, arg_types, arg_names)
+            self.func_dict[name] = wrap_function(self.clib, name, ret_type, arg_types, arg_names)
         except:
            print_error("Exception occurred loading function: " + f)
 
