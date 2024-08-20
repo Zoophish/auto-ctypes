@@ -543,7 +543,7 @@ class CLib():
 
 
     # convert loaded library to Python module
-    def gen_module(self, path, name):
+    def gen_module(self, path, name, no_pkg = False):
         print(f"[autoctypes] Generating module {name}")
         path = os.path.join(path, name)
         try: os.mkdir(path)
@@ -559,15 +559,16 @@ class CLib():
         file = open(os.path.join(path, f"{name}.py"), 'w')
         file.write(s)
         file.close()
-        file = open(os.path.join(path, "__init__.py"), 'w')
-        file.close()
+        if not no_pkg:
+            file = open(os.path.join(path, "__init__.py"), 'w')
+            file.close()
         print(f"[autoctypes] Module generated at {path}")
 
 
 if __name__ == '__main__':
     import sys
     if len(sys.argv) < 2:
-        print("Usage: -gen <header_path> <headers> <bin_path> <export_macro> <output_path> <gen_module_name>")
+        print("Usage: -gen <header_path> <headers> <bin_path> <export_macro> <output_path> <gen_module_name> --[nopkg/]")
         sys.exit(1)
     if sys.argv[1] == '-gen':
         header_path, headers_arg, bin_path, export_macro, output_path, gen_module_name = sys.argv[2:]
@@ -575,6 +576,7 @@ if __name__ == '__main__':
         clib = CLib()
         clib.exp_tag = export_macro
         clib.load_lib(os.path.normpath(bin_path), os.path.normpath(header_path), headers, export_macro)
-        clib.gen_module(os.path.normpath(output_path), gen_module_name)
+        no_pkg = "--nopkg" in sys.argv
+        clib.gen_module(os.path.normpath(output_path), gen_module_name, no_pkg)
     else:
         print(f"{sys.argv[0]} unrecognised argument.")
