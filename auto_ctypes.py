@@ -254,8 +254,7 @@ class CLib():
         try:
             exp_str = self.pre_definitions[self.exp_tag]
             f = f.replace(exp_str, '')
-            raw_parts = split(f, string.whitespace + '()')
-            parts = [exp_str] + list(filter(None, raw_parts))
+            parts = [exp_str] + list(filter(None, split(f, string.whitespace + '()')))
             # 0[export tag] 1[ret type] 2[name] 3[args/junk]
 
             (parts[1], parts[2]) = move_pointer_sig(parts[1], parts[2]) # move pointer signature into part 1
@@ -263,7 +262,7 @@ class CLib():
             ret_type = self.get_ctype(parts[1])
             name = parts[2].strip()
 
-            arg_str = re.findall(r'\((.*?)\)', f)[0]
+            arg_str = re.findall(r'\((.*?)\)', f, re.DOTALL)[0]
             arg_types = None
             arg_names = None
             if arg_str:
