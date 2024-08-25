@@ -301,8 +301,8 @@ class CLib():
                 members = [member.strip() for member in content.split(';')][:-1]
                 for member in members:
                     mem_parts = split(member, string.whitespace)
-                    mem_type_name = mem_parts[0].strip()
-                    mem_name = mem_parts[1].strip()
+                    mem_type_name, mem_name = move_pointer_sig(mem_parts[0].strip(), mem_parts[1].strip())
+                    mem_type_name, mem_name = move_array_sig(mem_type_name, mem_name)
                     fields.append( (mem_name, self.get_ctype(mem_type_name)) )
 
             setattr(struct, "_fields_", fields) # add the required _fields_ attribute
