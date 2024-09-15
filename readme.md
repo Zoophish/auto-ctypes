@@ -7,8 +7,8 @@ A small Python script that automatically generates bindings for C header files a
 - Wraps header enums with fake enum class. Enum values are `ctypes.c_int` by default, but can be overriden using C++ colon syntax (doesn't support any other C++ features).    
 - Creates function wrappers for exported functions in header(s). It deduces return and argument types automatically and generates type hints.    
 - Does basic pre-processing of includes, macros and conditional compilation     
-- Small: ~500 lines of Python    
-- It doesn't wrap global variables as I don't use these.    
+- Small: ~600 lines of Python    
+- It *doesn't wrap* global variables    
 
 **Loading a Library**
 ```python
@@ -47,7 +47,7 @@ output = my_lib.my_function(100)
 value = my_lib.ShapeEnum.SQUARE
 
 # using types (same names as in header)
-# if type is opaque, can only use pointers to 
+# if type is opaque, can only use pointers
 my_type_instance = my_lib.MyType()
 my_type_instance.int_member = 9
 ```
@@ -59,5 +59,16 @@ value1 = clib.ex('my_function', 100)
 value2 = clib.enum('ShapeEnum', 'SQUARE')
 my_type_instance = clib.struct_dict['MyType']()
 ```
+
+
+**Command-Line Usage**   
+The script can be used from the command-line (for use in CMake for example).   
+```cmd
+python ./auto_ctypes.py -gen <header_path> <headers> <bin_path> <export_macro> <output_path> <gen_module_name> [flags]
+```
+
+Flags:   
+- `--nopkg` Don't make a folder and `__init__.py` with the generated wrapper.
+
 
 Sam Warren 2024
