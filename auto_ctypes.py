@@ -91,22 +91,21 @@ multitoken_types_subs = (
 )
 
 primitive_ctypes_regex = [
-    ("int(?!.)", ctypes.c_int),
-    ("unsigned(?!.)", ctypes.c_uint),
-    ("long(?!.)", ctypes.c_long),
+    ("int", ctypes.c_int),
+    ("unsigned", ctypes.c_uint),
+    ("long", ctypes.c_long),
     ("unsigned-long-long", ctypes.c_ulonglong),
-    ("char(?!.)", ctypes.c_char),
+    ("char", ctypes.c_char),
     ("float", ctypes.c_float),
     ("bool", ctypes.c_bool),
     ("size_t", ctypes.c_size_t),
-    ("void(?!.)", None)]
+    ("void", None)]
 
 
 def str_to_primitive_ctype(s):
-    post = "[\*\[\]]?"
-    for i in range(0, len(primitive_ctypes_regex)):
-        if re.search(primitive_ctypes_regex[i][0] + post, s) is not None:
-            return (True, primitive_ctypes_regex[i][1])
+    for pattern, ctype in primitive_ctypes_regex:
+        if re.search(f"^{pattern}([\*\[\]])?$", s) is not None:
+            return (True, ctype)
     return (False, None)
 
 
