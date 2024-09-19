@@ -83,9 +83,18 @@ def reduce_func_args(arg_str):
     return (args, arg_names)
 
 
+# replace space-separated types with internal representation
+multitoken_types_subs = (
+    (r'\bunsigned\s+int\b', 'unsigned'),
+    (r'\bunsigned\s+long\s+long\b', 'unsigned-long-long'),
+    (r'\blong\s+long\b', 'long-long'),
+)
+
 primitive_ctypes_regex = [
     ("int(?!.)", ctypes.c_int),
     ("unsigned(?!.)", ctypes.c_uint),
+    ("long(?!.)", ctypes.c_long),
+    ("unsigned-long-long", ctypes.c_ulonglong),
     ("char(?!.)", ctypes.c_char),
     ("float", ctypes.c_float),
     ("bool", ctypes.c_bool),
@@ -255,6 +264,7 @@ class CLib():
             exp_str = self.pre_definitions[self.exp_tag]
             f = f.replace(exp_str, '')
             parts = [exp_str] + list(filter(None, split(f, string.whitespace + '()')))
+
             # 0[export tag] 1[ret type] 2[name] 3[args/junk]
 
             (parts[1], parts[2]) = move_pointer_sig(parts[1], parts[2]) # move pointer signature into part 1
@@ -394,7 +404,9 @@ class CLib():
         file = open(path, 'r')
         fstr = file.read()
         fstr = '\n'.join(self.pre_process(fstr))
-        fstr = re.sub(r'\b(const|volatile)\s+', '', fstr) # disregard qualifiers
+        fstr = re.sub(r'\b(const|volatile)\s+', '', fstr)  # disregard qualifiers
+        for sub in multitoken_types_subs:  # handle types with spaces
+            fstr = re.sub(sub[0], sub[1], fstr)
         struct_definitions = self.find_structs(fstr)
         typedef_declarations = self.find_typedefs(fstr)
         enum_definitions = self.find_enums(fstr)
