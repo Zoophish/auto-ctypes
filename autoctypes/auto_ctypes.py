@@ -291,13 +291,13 @@ class CLib():
         opaque = True
         if '{' not in s and '}' not in s: # opaque struct wrapper
             opaque = True
-            struct_name = re.search("(?<=struct ).*(?=;)", s).group(0)
+            struct_name = re.search("(?<=struct ).*(?=;)", s).group(0).strip()
             self.struct_dict[struct_name] = types.new_class(struct_name, (ctypes.Structure, ), dict())
             self.resolve_type(struct_name) # has a declaration
 
         else:   # define structure
             opaque = False
-            struct_name = re.search("(?<=struct ).*?(?= \{)", s).group(0)
+            struct_name = re.search("(?<=struct ).*?(?= \{)", s).group(0).strip()
 
             if struct_name not in self.struct_dict:
                 self.struct_dict[struct_name] = types.new_class(struct_name, (ctypes.Structure, ), dict()) # placeholder
