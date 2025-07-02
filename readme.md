@@ -11,9 +11,20 @@ A small Python script that generates bindings for C header files and binaries us
 - Small: ~600 lines of Python    
 - It doesn't wrap global variables    
 
+**Installing**
+
+To install the package with PIP:
+
+```cmd
+cd ./autoctypes
+pip install .
+```
+
+Or drop `autoctypes/auto_ctypes.py` into your working directory and invoke the script from the command line.   
+
 **Loading a Library**
 ```python
-from .autoctypes import auto_ctypes as actypes
+import autoctypes
 
 # specify the binary and include path
 bin_path = 'bin\\my_lib.dll'
@@ -26,7 +37,7 @@ headers = ["my_lib.h"]
 export_tag = 'MY_LIB_EXPORT'
 
 # load the binary and definitions into a clib instance
-clib = actypes.CLib()
+clib = autoctypes.CLib()
 # add a macro to the pre-processor
 clib.define('_WIN32')
 # load everything with one function
@@ -70,6 +81,3 @@ python ./auto_ctypes.py -gen <header_path> <headers> <bin_path> <export_macro> <
 
 Flags:   
 - `--nopkg` Don't make a folder and `__init__.py` with the generated wrapper.
-
-
-Sam Warren 2024
