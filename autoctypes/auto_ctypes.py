@@ -83,30 +83,69 @@ def reduce_func_args(arg_str):
     return (args, arg_names)
 
 
-# replace space-separated types with internal representation
-multitoken_types_subs = (
-    (r'\bunsigned\s+int\b', 'unsigned'),
-    (r'\bunsigned\s+long\s+long\b', 'unsigned-long-long'),
-    (r'\blong\s+long\b', 'long-long'),
+# desugared representations
+multitoken_subs = (
+    (r'\blong\s+long(?:\s+int\b)?\b', 'long-long'),
+    (r'\blong\s+double\b', 'long-double'),
+    (r'\blong(?:\s+int\b)?\b', 'long'),
+    (r'\bshort(?:\s+int\b)?\b', 'short'),
+    (r'\bchar\b', 'char'),
+    (r'\bint\b', 'int'),
+    (r'\bfloat\b', 'float'),
+    (r'\bdouble\b', 'double'),
+    (r'\bbool\b', 'bool'),
+    (r'\bvoid\b', 'void'),
+    (r'\bwchar_t\b', 'wchar_t'),
+    (r'\bsize_t\b', 'size_t'),
 )
 
-primitive_ctypes_regex = [
-    ("int", ctypes.c_int),
-    ("unsigned", ctypes.c_uint),
-    ("long", ctypes.c_long),
-    ("unsigned-long-long", ctypes.c_ulonglong),
-    ("char", ctypes.c_char),
-    ("float", ctypes.c_float),
-    ("bool", ctypes.c_bool),
-    ("size_t", ctypes.c_size_t),
-    ("void", None)]
+primitive_ctypes_map = {
+    "int": ctypes.c_int,
+    "signed-int": ctypes.c_int,
+    "unsigned-int": ctypes.c_uint,
+    "long": ctypes.c_long,
+    "signed-long": ctypes.c_long,
+    "unsigned-long": ctypes.c_ulong,
+    "long-long": ctypes.c_longlong,
+    "signed-long-long": ctypes.c_longlong,
+    "unsigned-long-long": ctypes.c_ulonglong,
+    "short": ctypes.c_short,
+    "signed-short": ctypes.c_short,
+    "unsigned-short": ctypes.c_ushort,
+
+    "char": ctypes.c_char,
+    "signed-char": ctypes.c_byte,
+    "unsigned-char": ctypes.c_ubyte,
+
+    "float": ctypes.c_float,
+    "double": ctypes.c_double,
+    "long-double": ctypes.c_longdouble,
+
+    "bool": ctypes.c_bool,
+    "void": None,
+
+    "size_t": ctypes.c_size_t,
+    "wchar_t": ctypes.c_wchar,
+}
 
 
-def str_to_primitive_ctype(s):
-    for pattern, ctype in primitive_ctypes_regex:
-        if re.search(f"^{pattern}([\*\[\]])?$", s) is not None:
-            return (True, ctype)
-    return (False, None)
+def desugar_type_str(str):
+    str, signed = re.subn(r'\bsigned\b', '', str)  # signedness
+    str, unsigned = re.subn(r'\bunsigned\b', '', str)
+    str = str.strip()
+    if (not str) and (signed or unsigned):
+        type_token = 'int'
+    else:
+        type_token = next((t for r, t in multitoken_subs if re.search(r, str)), 'void')
+    if unsigned: type_token = 'unsigned-' + type_token
+    elif signed: type_token = 'signed-' + type_token
+    return type_token
+
+
+def desugared_to_prim_ctype(str):
+    if str in primitive_ctypes_map:
+        return (True, primitive_ctypes_map[str])
+    else: return (False, None)
 
 
 def c_str(s):
@@ -159,7 +198,7 @@ class CLib():
         s = s.strip()
         
         t = None
-        it = str_to_primitive_ctype(s) # check for primitive type
+        it = desugared_to_prim_ctype(s) # check for primitive type
         is_primitive = it[0]
 
         if not is_primitive:
@@ -251,9 +290,10 @@ class CLib():
             name = re.search(r'\((.*?)\)', s).group(1).replace('*', '')
             self.struct_dict[name] = f
             self.resolve_type(name)
-        elif len(parts) == 3: # alias
-            t = self.get_ctype(parts[1])
-            alias = parts[2].replace(';', '').strip()
+        else: # alias
+            type_str = desugar_type_str(' '.join(parts[1:-1]))
+            t = self.get_ctype(type_str)
+            alias = parts[-1].replace(';', '').strip()
             self.struct_dict[alias] = t
             self.resolve_type(alias)
 
@@ -310,7 +350,8 @@ class CLib():
                 members = [member.strip() for member in content.split(';')][:-1]
                 for member in members:
                     mem_parts = split(member, string.whitespace)
-                    mem_type_name, mem_name = move_pointer_sig(mem_parts[0].strip(), mem_parts[1].strip())
+                    type_str = desugar_type_str(' '.join(mem_parts[:-1]))
+                    mem_type_name, mem_name = move_pointer_sig(type_str.strip(), mem_parts[-1].strip())
                     mem_type_name, mem_name = move_array_sig(mem_type_name, mem_name)
                     fields.append( (mem_name, self.get_ctype(mem_type_name)) )
 
@@ -404,8 +445,8 @@ class CLib():
         fstr = file.read()
         fstr = '\n'.join(self.pre_process(fstr))
         fstr = re.sub(r'\b(const|volatile)\s+', '', fstr)  # disregard qualifiers
-        for sub in multitoken_types_subs:  # handle types with spaces
-            fstr = re.sub(sub[0], sub[1], fstr)
+        # for sub in multitoken_types_subs:  # handle types with spaces
+        #     fstr = re.sub(sub[0], sub[1], fstr)
         struct_definitions = self.find_structs(fstr)
         typedef_declarations = self.find_typedefs(fstr)
         enum_definitions = self.find_enums(fstr)
