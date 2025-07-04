@@ -144,8 +144,8 @@ def desugar_type_str(str):
 
 def desugared_to_prim_ctype(str):
     if str in primitive_ctypes_map:
-        return (True, primitive_ctypes_map[str])
-    else: return (False, None)
+        return True, primitive_ctypes_map[str]
+    else: return False, None
 
 
 def c_str(s):
@@ -445,17 +445,15 @@ class CLib():
         fstr = file.read()
         fstr = '\n'.join(self.pre_process(fstr))
         fstr = re.sub(r'\b(const|volatile)\s+', '', fstr)  # disregard qualifiers
-        # for sub in multitoken_types_subs:  # handle types with spaces
-        #     fstr = re.sub(sub[0], sub[1], fstr)
         struct_definitions = self.find_structs(fstr)
         typedef_declarations = self.find_typedefs(fstr)
         enum_definitions = self.find_enums(fstr)
         func_declarations = self.find_funcs(fstr, self.pre_definitions[self.exp_tag])
         file.close()
-        [self.load_enum(e) for e in enum_definitions]
-        [self.load_struct(s) for s in struct_definitions]
-        [self.load_typedef(s) for s in typedef_declarations]
-        [self.load_func(f) for f in func_declarations]
+        for e in enum_definitions: self.load_enum(e)
+        for s in struct_definitions: self.load_struct(s)
+        for s in typedef_declarations: self.load_typedef(s)
+        for f in func_declarations: self.load_func(f)
         
     
     def load_lib(self, bin_path, include_path, headers, export_tag):
