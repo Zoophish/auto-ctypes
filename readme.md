@@ -74,10 +74,52 @@ my_type_instance = clib.struct_dict['MyType']()
 
 
 **Command-Line Usage**   
-The script can be used from the command-line (for use in CMake for example).   
+The script can be used from the command-line using the followning arguments:   
 ```cmd
 python ./auto_ctypes.py -gen <header_path> <headers> <bin_path> <export_macro> <output_path> <gen_module_name> [flags]
 ```
 
 Flags:   
 - `--nopkg` Don't make a folder and `__init__.py` with the generated wrapper.
+
+**CMake Usage**   
+```cmake
+include(FetchContent)
+
+# clone the auto-ctypes repository
+FetchContent_Declare(
+    autoctypes_pkg
+    GIT_REPOSITORY "https://github.com/Zoophish/auto-ctypes.git"
+    GIT_TAG "master"
+)
+FetchContent_MakeAvailable(autoctypes_pkg)
+set(AUTO_CTYPES "${autoctypes_pkg_SOURCE_DIR}/autoctypes/auto_ctypes.py")
+
+set(PYTHON_MODULE_NAME "ctypes_mylibrary")                                 # the name of the output python module
+set(HEADER_PATH "${CMAKE_INSTALL_PREFIX}/include/mylibrary")               # include path to the headers
+set(HEADERS "myheader.h")                                                  # the headers to wrap
+set(OUTPUT_PATH "${CMAKE_INSTALL_PREFIX}/pymylibrary")                     # install location of python wrapper
+set(BIN_PATH "${CMAKE_INSTALL_PREFIX}/lib/$<TARGET_FILE_NAME:mylibrary>")  # install location of binaries
+
+find_package(Python3 REQUIRED)
+
+# wrap the header and install the binaries with the python
+add_custom_command(
+    OUTPUT ${OUTPUT_PATH}/cinebox
+    COMMAND ${CMAKE_COMMAND} -E echo "AUTO_CTYPES: ${AUTO_CTYPES}"
+    COMMAND ${CMAKE_COMMAND} -E echo "HEADER_PATH: ${HEADER_PATH}"
+    COMMAND ${CMAKE_COMMAND} -E echo "HEADERS: ${HEADERS}"
+    COMMAND ${CMAKE_COMMAND} -E echo "EXPORT_MACRO: ${EXPORT_MACRO}"
+    COMMAND ${CMAKE_COMMAND} -E echo "OUTPUT_PATH: ${OUTPUT_PATH}"
+    COMMAND ${CMAKE_COMMAND} -E echo "BIN_PATH: ${BIN_PATH}"
+    COMMAND ${CMAKE_COMMAND} -E echo "Python3_EXECUTABLE: ${Python3_EXECUTABLE}"
+    COMMAND ${CMAKE_COMMAND} --install ${CMAKE_BINARY_DIR} --config $<CONFIG>
+    COMMAND ${Python3_EXECUTABLE} ${AUTO_CTYPES} -gen ${HEADER_PATH} ${HEADERS} ${BIN_PATH} ${EXPORT_MACRO} ${OUTPUT_PATH} ${PYTHON_MODULE_NAME} --nopkg
+    COMMENT "Installing mylibrary and generating ctypes wrapper"
+    VERBATIM
+)
+add_custom_target(generate_ctypes ALL
+    DEPENDS ${OUTPUT_PATH}/mylibrary
+    COMMENT "Generating ctypes wrapper"
+)
+```
