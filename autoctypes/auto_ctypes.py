@@ -102,6 +102,7 @@ multitoken_subs = (
 primitive_ctypes_map = {
     "int": ctypes.c_int,
     "signed-int": ctypes.c_int,
+    "unsigned": ctypes.c_uint,
     "unsigned-int": ctypes.c_uint,
     "long": ctypes.c_long,
     "signed-long": ctypes.c_long,
