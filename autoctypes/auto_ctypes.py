@@ -130,6 +130,18 @@ primitive_ctypes_map = {
 }
 
 
+_signedness_join = re.compile(
+    r'\b(unsigned|signed)\s+'
+    r'(int|char|short|long-long|long-double|long|float|double)\b'
+)
+
+def desugar_types_inline(s):
+    for regex, token in multitoken_subs:
+        s = re.sub(regex, token, s)
+    s = _signedness_join.sub(r'\1-\2', s)
+    return s
+
+
 def desugar_type_str(str):
     str, signed = re.subn(r'\bsigned\b', '', str)  # signedness
     str, unsigned = re.subn(r'\bunsigned\b', '', str)
@@ -303,6 +315,7 @@ class CLib():
         try:
             exp_str = self.pre_definitions[self.exp_tag]
             f = f.replace(exp_str, '')
+            f = desugar_types_inline(f)
             parts = [exp_str] + list(filter(None, split(f, string.whitespace + '()')))
 
             # 0[export tag] 1[ret type] 2[name] 3[args/junk]
